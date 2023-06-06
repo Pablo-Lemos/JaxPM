@@ -89,6 +89,5 @@ def read_camels_cv_set(
 
 def normalize_by_mesh(positions, velocities, box_size, n_mesh):
     positions = positions / box_size * n_mesh
-    # TODO: Why velocities are normalized like this?
     velocities = velocities / box_size * n_mesh
     return positions, velocities
