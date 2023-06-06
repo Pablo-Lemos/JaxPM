@@ -21,7 +21,6 @@ from camels_utils import read_camels_cv_set, normalize_by_mesh
 from evaluate import eval
 
 
-# TODO: Add wandb
 @partial(jax.jit, static_argnames=["model", "n_mesh"])
 def loss_fn(
     params,

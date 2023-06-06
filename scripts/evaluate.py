@@ -71,11 +71,6 @@ def plot_power_spectra(
     ax[0].set_ylabel(r"$P(k)$")
     return fig
 
-
-def plot_vel_histograms():
-    return
-
-
 def run_sim(
     pos,
     vel,
@@ -87,7 +82,7 @@ def run_sim(
     correction=False,
 ):
     if correction:
-        return run_pm_simulation_with_correction(
+        sim_pos, sim_vel = run_pm_simulation_with_correction(
             pos=pos[0],
             vels=vel[0],
             scale_factors=scale_factors,
@@ -96,13 +91,17 @@ def run_sim(
             model=model,
             params=params,
         )
-    return run_pm_simulation(
-        pos=pos[0],
-        vels=vel[0],
-        scale_factors=scale_factors,
-        cosmology=cosmology,
-        n_mesh=n_mesh,
-    )
+    else:
+        sim_pos, sim_vel = run_pm_simulation(
+            pos=pos[0],
+            vels=vel[0],
+            scale_factors=scale_factors,
+            cosmology=cosmology,
+            n_mesh=n_mesh,
+        )
+    #sim_pos *= box_size / n_mesh
+    #sim_vel *= box_size / n_mesh
+    return sim_pos, sim_vel
 
 
 def eval(
