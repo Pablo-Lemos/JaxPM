@@ -34,21 +34,23 @@ def read_camels(
     vel = readgadget.read_block(snapshot_filename, "VEL ", ptype)[
         ids
     ]  # peculiar velocities in km/s
-    pos = pos.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
-    vel = vel.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
+    #pos = pos.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
+    #vel = vel.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
     
-    pos = (pos / BoxSize * 32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
-    vel = (vel / 100 * (1./(1+redshift)) / BoxSize*32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
-    '''
+    #pos = (pos / BoxSize * 32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
+    #vel = (vel / 100 * (1./(1+redshift)) / BoxSize*32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
     pos = jnp.array(pos)
     vel = jnp.array(vel / 100 * (1.0 / (1 + redshift)))
     if downsampling_factor is not None:
+        downsampling_factor = len(pos) // 32**3
+        print(downsampling_factor)
         key = jax.random.PRNGKey(0)
         permuted_indices = jax.random.permutation(key, len(pos))
         selected_indices = permuted_indices[: len(pos) // downsampling_factor]
         pos = jnp.take(pos, selected_indices, axis=0)
         vel = jnp.take(vel, selected_indices, axis=0)
-    '''
+    print(pos.shape)
+    print(32**3)
     return pos, vel, redshift, Omega_m, Omega_l
 
 

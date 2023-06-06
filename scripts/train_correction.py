@@ -41,11 +41,10 @@ def loss_fn(
         rtol=1e-5,
         atol=1e-5,
     )
-    dx = pos_pm - target_pos
-    dx  = jnp.where(dx < 100, dx, 0.)
-
     # TODO: what's going on here?
-    #dx = dx - box_size * jnp.round(dx / box_size)
+    pos_pm %= n_mesh 
+    dx = pos_pm - target_pos
+    dx = dx - n_mesh * jnp.round(dx / n_mesh)
     mse = jnp.sum(dx**2, axis=-1)
     if velocity_loss:
         mse += jnp.sum((vel_pm - target_vel) ** 2, axis=-1)
@@ -96,11 +95,11 @@ if __name__ == "__main__":
     # ------ HYPERPARAMETERS
     n_mesh = 32
     box_size = [25.0, 25.0, 25.0]
-    downsampling_factor = 100
+    downsampling_factor = 10
     n_knots = 16
     latent_size = 32
     learning_rate = 0.01
-    n_steps = 500
+    n_steps = 100
     velocity_loss = False
     log_experiment = False
     # ------ LOAD CAMELS DATA
@@ -110,8 +109,9 @@ if __name__ == "__main__":
     target_pos, target_vel, z = read_camels_snapshots(
         range(34), downsampling_factor=downsampling_factor
     )
-    #target_pos = target_pos / box_size[0] * n_mesh
-    #target_vel = target_vel / box_size[0] * n_mesh
+    target_pos = target_pos / box_size[0] * n_mesh
+    #TODO: Why velocities are normalized like this?
+    target_vel = target_vel / box_size[0] * n_mesh
     scale_factors = 1 / (1 + jnp.array(z))
     # ------ RUN PM SIMULATION
     pos_pm, vel_pm = run_pm_simulation(
@@ -121,10 +121,9 @@ if __name__ == "__main__":
         cosmology=planck_cosmology,
         n_mesh=n_mesh,
     )
-    print(target_pos[-1].max())
-    print(pos_pm[-1].max())
-    print(target_pos.shape)
-    print(pos_pm.shape)
+    print(target_pos[-1].max(axis=0))
+    print(pos_pm[-1].max(axis=0))
+
     k, pk_nbody = power_spectrum(
         compensate_cic(cic_paint(jnp.zeros([n_mesh,n_mesh, n_mesh]), target_pos[-1])),
         boxsize=np.array([25.0] * 3),
@@ -144,6 +143,20 @@ if __name__ == "__main__":
     plt.ylabel(r"$P(k)$")
     plt.savefig("pk_before.png")
     plt.close()
+    edges = plt.hist(
+        target_vel[-1][:,0],
+        bins=100,
+        alpha=0.5,
+        label="N-body"
+    )
+    plt.hist(vel_pm[-1][:,0], bins=edges[1], alpha=0.5,
+             label="JaxPM w/o correction")
+    plt.legend()
+    plt.xlabel('v')
+    plt.ylabel('PDF')
+    plt.savefig('vel_hist_before.png')
+    plt.close()        
+
     # ------ INITIALIZE SPLINE
     model, params = initialize_model(
         n_mesh=n_mesh,
@@ -194,3 +207,22 @@ if __name__ == "__main__":
     plt.xlabel(r"$k$ [$h \ \mathrm{Mpc}^{-1}$]")
     plt.ylabel(r"$P(k)$")
     plt.savefig("pk_after.png")
+    plt.close()
+
+
+    edges = plt.hist(
+        target_vel[-1][:,0],
+        bins=100,
+        alpha=0.5,
+        label="N-body"
+    )
+    plt.hist(vel_pm[-1][:,0], bins=edges[1], alpha=0.5,
+             label="JaxPM w/o correction")
+    plt.hist(vel_pm_corr[-1][:,0], bins=edges[1], alpha=0.5,
+             label="JaxPM w correction")
+
+    plt.legend()
+    plt.xlabel('v')
+    plt.ylabel('PDF')
+    plt.savefig('vel_hist_before.png')
+    plt.close()    
