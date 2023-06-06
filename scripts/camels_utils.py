@@ -1,0 +1,68 @@
+import tables
+import h5py
+import numpy as np
+from pathlib import Path
+import jax
+import jax.numpy as jnp
+import readgadget
+
+DEFAULT_CAMELS_DATA_DIR = Path(
+    "../../projects/rrg-lplevass/data/CAMELS/Sims/IllustrisTNG_DM/CV_0/"
+)
+
+
+def read_camels(
+    snapshot,
+    downsampling_factor: 100,
+    data_dir=DEFAULT_CAMELS_DATA_DIR,
+):
+    snapshot_filename = str(data_dir / f"snap_{str(snapshot).zfill(3)}.hdf5")
+    print(snapshot_filename)
+    header = readgadget.header(snapshot_filename)
+    BoxSize = header.boxsize / 1e3  # Mpc/h
+    Omega_m = header.omega_m  # value of Omega_m
+    Omega_l = header.omega_l  # value of Omega_l
+    redshift = header.redshift  # redshift of the snapshot
+
+    ptype = [1]  # dark matter is particle type 1
+    ids = np.argsort(
+        readgadget.read_block(snapshot_filename, "ID  ", ptype) - 1
+    )  # IDs starting from 0
+    pos = (
+        readgadget.read_block(snapshot_filename, "POS ", ptype)[ids] / 1e3
+    )  # positions in Mpc/h
+    vel = readgadget.read_block(snapshot_filename, "VEL ", ptype)[
+        ids
+    ]  # peculiar velocities in km/s
+    pos = pos.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
+    vel = vel.reshape(4,4,4,64,64,64,3).transpose(0,3,1,4,2,5,6).reshape(-1,3)
+    
+    pos = (pos / BoxSize * 32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
+    vel = (vel / 100 * (1./(1+redshift)) / BoxSize*32).reshape([256,256,256,3])[2::8,2::8,2::8,:].reshape([-1,3])
+    '''
+    pos = jnp.array(pos)
+    vel = jnp.array(vel / 100 * (1.0 / (1 + redshift)))
+    if downsampling_factor is not None:
+        key = jax.random.PRNGKey(0)
+        permuted_indices = jax.random.permutation(key, len(pos))
+        selected_indices = permuted_indices[: len(pos) // downsampling_factor]
+        pos = jnp.take(pos, selected_indices, axis=0)
+        vel = jnp.take(vel, selected_indices, axis=0)
+    '''
+    return pos, vel, redshift, Omega_m, Omega_l
+
+
+def read_camels_snapshots(
+    snapshot_list,
+    downsampling_factor=500,
+    data_dir=DEFAULT_CAMELS_DATA_DIR,
+):
+    pos, vel, redshift = [], [], []
+    for s in snapshot_list:
+        p, v, z, _, _ = read_camels(
+            snapshot=s, downsampling_factor=downsampling_factor, data_dir=data_dir
+        )
+        pos.append(p)
+        vel.append(v)
+        redshift.append(z)
+    return jnp.array(pos), jnp.array(vel), jnp.array(redshift)
