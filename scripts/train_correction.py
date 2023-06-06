@@ -1,6 +1,9 @@
 from functools import partial
 from tqdm import tqdm
-#import wandb
+import logging
+logging.getLogger().setLevel(logging.INFO)
+
+# import wandb
 import numpy as np
 
 import haiku as hk
@@ -17,7 +20,8 @@ import matplotlib.pyplot as plt
 from jaxpm.painting import cic_paint, compensate_cic
 from jaxpm.utils import power_spectrum
 
-from camels_utils import read_camels_snapshots
+from camels_utils import read_camels_cv_set, normalize_by_mesh
+
 
 # TODO: Add wandb
 @partial(jax.jit, static_argnames=["model", "n_mesh"])
@@ -32,23 +36,25 @@ def loss_fn(
     model,
     velocity_loss=False,
 ):
-    pos_pm, vel_pm = odeint(
-        make_neural_ode_fn(model, [n_mesh, n_mesh, n_mesh]),
-        [target_pos[0], target_vel[0]],
-        scales,
-        cosmology,
-        params,
-        rtol=1e-5,
-        atol=1e-5,
-    )
-    # TODO: what's going on here?
-    pos_pm %= n_mesh 
-    dx = pos_pm - target_pos
-    dx = dx - n_mesh * jnp.round(dx / n_mesh)
-    mse = jnp.sum(dx**2, axis=-1)
-    if velocity_loss:
-        mse += jnp.sum((vel_pm - target_vel) ** 2, axis=-1)
-    return jnp.mean(mse)
+    mse = 0
+    for pos, vel in zip(target_pos, target_vel):
+        pos_pm, vel_pm = odeint(
+            make_neural_ode_fn(model, [n_mesh, n_mesh, n_mesh]),
+            [pos[0], vel[0]],
+            scales,
+            cosmology,
+            params,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        pos_pm %= n_mesh
+        dx = pos_pm - pos 
+        dx = dx - n_mesh * jnp.round(dx / n_mesh)
+        sim_mse = jnp.sum(dx**2, axis=-1)
+        if velocity_loss:
+            sim_mse += jnp.sum((vel_pm - vel) ** 2, axis=-1)
+        mse += jnp.mean(sim_mse)
+    return mse / len(target_pos)
 
 
 def initialize_model(n_mesh, n_knots: int = 16, latent_size: int = 32):
@@ -78,8 +84,17 @@ def run_pm_simulation(pos, vels, scale_factors, cosmology, n_mesh):
         atol=1e-5,
     )
 
+
 @partial(jax.jit, static_argnames=["n_mesh", "model"])
-def run_pm_simulation_with_correction(pos, vels, scale_factors, cosmology, n_mesh, model, params,):
+def run_pm_simulation_with_correction(
+    pos,
+    vels,
+    scale_factors,
+    cosmology,
+    n_mesh,
+    model,
+    params,
+):
     mesh_shape = [n_mesh, n_mesh, n_mesh]
     return odeint(
         make_neural_ode_fn(model, mesh_shape),
@@ -90,6 +105,7 @@ def run_pm_simulation_with_correction(pos, vels, scale_factors, cosmology, n_mes
         rtol=1e-5,
         atol=1e-5,
     )
+
 
 if __name__ == "__main__":
     # ------ HYPERPARAMETERS
@@ -102,35 +118,51 @@ if __name__ == "__main__":
     n_steps = 100
     velocity_loss = False
     log_experiment = False
+    snapshot_list = range(32)
+    train_idx = [0,1,2,3]
+    val_idx = [4,]
+    test_idx = [5,]
     # ------ LOAD CAMELS DATA
     planck_cosmology = jc.Planck15(
         Omega_c=0.3 - 0.049, Omega_b=0.049, n_s=0.9624, h=0.671, sigma8=0.8
     )
-    target_pos, target_vel, z = read_camels_snapshots(
-        range(34), downsampling_factor=downsampling_factor
+    target_pos, target_vel, z = read_camels_cv_set(
+        cv_index_list=train_idx, 
+        snapshot_list=snapshot_list,
+        downsampling_factor=downsampling_factor
     )
-    target_pos = target_pos / box_size[0] * n_mesh
-    #TODO: Why velocities are normalized like this?
-    target_vel = target_vel / box_size[0] * n_mesh
+    target_pos, target_vel = normalize_by_mesh(
+        target_pos, target_vel, box_size[0], n_mesh,
+    )
     scale_factors = 1 / (1 + jnp.array(z))
-    test_pos, test_vel, _ = read_camels_snapshots(
-        range(34), cv_index=1,downsampling_factor=downsampling_factor
+    val_pos, val_vel, _ = read_camels_cv_set(
+        cv_index_list=val_idx, 
+        snapshot_list=snapshot_list,
+        downsampling_factor=downsampling_factor
     )
-    test_pos = test_pos / box_size[0] * n_mesh
-    #TODO: Why velocities are normalized like this?
-    test_vel = test_vel/ box_size[0] * n_mesh
-
+    val_pos, val_vel = normalize_by_mesh(
+        val_pos, val_vel, box_size[0], n_mesh,
+    )
+    test_pos, test_vel, _ = read_camels_cv_set(
+        cv_index_list=test_idx, 
+        snapshot_list=snapshot_list,
+        downsampling_factor=downsampling_factor
+    )
+    test_pos, test_vel = normalize_by_mesh(
+        test_pos, test_vel, box_size[0], n_mesh,
+    )
     # ------ RUN PM SIMULATION
+    plot_test_idx = 0
     pos_pm, vel_pm = run_pm_simulation(
-        pos=test_pos[0],
-        vels=test_vel[0],
+        pos=test_pos[plot_test_idx][0],
+        vels=test_vel[plot_test_idx][0],
         scale_factors=scale_factors,
         cosmology=planck_cosmology,
         n_mesh=n_mesh,
     )
 
     k, pk_nbody = power_spectrum(
-        compensate_cic(cic_paint(jnp.zeros([n_mesh,n_mesh, n_mesh]), test_pos[-1])),
+        compensate_cic(cic_paint(jnp.zeros([n_mesh, n_mesh, n_mesh]), test_pos[plot_test_idx][-1])),
         boxsize=np.array([25.0] * 3),
         kmin=np.pi / 25.0,
         dk=2 * np.pi / 25.0,
@@ -149,18 +181,24 @@ if __name__ == "__main__":
     plt.savefig("pk_before.png")
     plt.close()
     edges = plt.hist(
-        test_vel[-1][:,0],
+        test_vel[plot_test_idx][-1][:, 0],
         bins=100,
         alpha=0.5,
-        label="N-body"
+        label="N-body",
+        log=True,
     )
-    plt.hist(vel_pm[-1][:,0], bins=edges[1], alpha=0.5,
-             label="JaxPM w/o correction")
+    plt.hist(
+        vel_pm[-1][:, 0],
+        bins=edges[1],
+        alpha=0.5,
+        log=True,
+        label="JaxPM w/o correction",
+    )
     plt.legend()
-    plt.xlabel('v')
-    plt.ylabel('PDF')
-    plt.savefig('vel_hist_before.png')
-    plt.close()        
+    plt.xlabel("v")
+    plt.ylabel("PDF")
+    plt.savefig("vel_hist_before.png")
+    plt.close()
 
     # ------ INITIALIZE SPLINE
     model, params = initialize_model(
@@ -184,14 +222,24 @@ if __name__ == "__main__":
             n_mesh,
             model,
         )
-        pbar.set_postfix({'Step': step, 'Loss': loss})
-        #wandb.log({'step': step, 'loss': loss})
         updates, opt_state = optimizer.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
+        val_loss = loss_fn(
+            params,
+            planck_cosmology,
+            val_pos,
+            val_vel,
+            scale_factors,
+            box_size[0],
+            n_mesh,
+            model,
+        )
+        pbar.set_postfix({"Step": step, "Loss": loss, "Val Loss": val_loss})
+        # wandb.log({'step': step, 'loss': loss})
 
     pos_pm_corr, vel_pm_corr = run_pm_simulation_with_correction(
-        pos=test_pos[0],
-        vels=test_vel[0],
+        pos=test_pos[plot_test_idx][0],
+        vels=test_vel[plot_test_idx][0],
         scale_factors=scale_factors,
         cosmology=planck_cosmology,
         n_mesh=n_mesh,
@@ -214,20 +262,29 @@ if __name__ == "__main__":
     plt.savefig("pk_after.png")
     plt.close()
 
-
     edges = plt.hist(
-        test_vel[-1][:,0],
+        test_vel[plot_test_idx][-1][:, 0],
         bins=100,
         alpha=0.5,
-        label="N-body"
+        label="N-body",
+        log=True,
     )
-    plt.hist(vel_pm[-1][:,0], bins=edges[1], alpha=0.5,
-             label="JaxPM w/o correction")
-    plt.hist(vel_pm_corr[-1][:,0], bins=edges[1], alpha=0.5,
-             label="JaxPM w correction")
-
+    plt.hist(
+        vel_pm[-1][:, 0],
+        bins=edges[1],
+        alpha=0.5,
+        label="JaxPM w/o correction",
+        log=True,
+    )
+    plt.hist(
+        vel_pm_corr[-1][:, 0],
+        bins=edges[1],
+        alpha=0.5,
+        label="JaxPM w correction",
+        log=True,
+    )
     plt.legend()
-    plt.xlabel('v')
-    plt.ylabel('PDF')
-    plt.savefig('vel_hist_after.png')
-    plt.close()    
+    plt.xlabel("v")
+    plt.ylabel("PDF")
+    plt.savefig("vel_hist_after.png")
+    plt.close()

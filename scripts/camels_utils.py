@@ -1,24 +1,26 @@
 import tables
 import h5py
+from typing import List
 import numpy as np
 from pathlib import Path
 import jax
 import jax.numpy as jnp
+import logging
 import readgadget
 
 DEFAULT_CAMELS_DATA_DIR = Path(
     "../../projects/rrg-lplevass/data/CAMELS/Sims/IllustrisTNG_DM/"
 )
 
-
 def read_camels(
     snapshot,
-    cv_index: int=0,
-    downsampling_factor:int= 100,
+    cv_index: int = 0,
+    downsampling_factor: int = 100,
     data_dir=DEFAULT_CAMELS_DATA_DIR,
 ):
-    snapshot_filename = str(data_dir / f"CV_{cv_index}/snap_{str(snapshot).zfill(3)}.hdf5")
-    print(snapshot_filename)
+    snapshot_filename = str(
+        data_dir / f"CV_{cv_index}/snap_{str(snapshot).zfill(3)}.hdf5"
+    )
     header = readgadget.header(snapshot_filename)
     BoxSize = header.boxsize / 1e3  # Mpc/h
     Omega_m = header.omega_m  # value of Omega_m
@@ -49,16 +51,44 @@ def read_camels(
 
 def read_camels_snapshots(
     snapshot_list,
-    cv_index: int=0,
+    cv_index: int = 0,
     downsampling_factor=500,
     data_dir=DEFAULT_CAMELS_DATA_DIR,
 ):
+    logging.info(f'Reading CAMELS CV {cv_index}')
     pos, vel, redshift = [], [], []
     for s in snapshot_list:
         p, v, z, _, _ = read_camels(
-            snapshot=s, cv_index=cv_index, downsampling_factor=downsampling_factor, data_dir=data_dir
+            snapshot=s,
+            cv_index=cv_index,
+            downsampling_factor=downsampling_factor,
+            data_dir=data_dir,
         )
         pos.append(p)
         vel.append(v)
         redshift.append(z)
     return jnp.array(pos), jnp.array(vel), jnp.array(redshift)
+
+def read_camels_cv_set(
+    cv_index_list: List[int] = [0,1],
+    snapshot_list=range(34),
+    downsampling_factor: int = 500,
+    data_dir=DEFAULT_CAMELS_DATA_DIR,
+):
+    pos, vel = [], []
+    for cv_index in cv_index_list:
+        p, v, redshift = read_camels_snapshots(
+            snapshot_list=snapshot_list,
+            cv_index=cv_index,
+            downsampling_factor=downsampling_factor,
+            data_dir=data_dir,
+        )
+        pos.append(p)
+        vel.append(v)
+    return jnp.array(pos), jnp.array(vel), redshift
+
+def normalize_by_mesh(positions, velocities, box_size, n_mesh):
+    positions = positions / box_size * n_mesh
+    # TODO: Why velocities are normalized like this?
+    velocities = velocities / box_size * n_mesh
+    return positions, velocities
