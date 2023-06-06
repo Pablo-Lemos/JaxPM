@@ -113,19 +113,24 @@ if __name__ == "__main__":
     #TODO: Why velocities are normalized like this?
     target_vel = target_vel / box_size[0] * n_mesh
     scale_factors = 1 / (1 + jnp.array(z))
+    test_pos, test_vel, _ = read_camels_snapshots(
+        range(34), cv_index=1,downsampling_factor=downsampling_factor
+    )
+    test_pos = test_pos / box_size[0] * n_mesh
+    #TODO: Why velocities are normalized like this?
+    test_vel = test_vel/ box_size[0] * n_mesh
+
     # ------ RUN PM SIMULATION
     pos_pm, vel_pm = run_pm_simulation(
-        pos=target_pos[0],
-        vels=target_vel[0],
+        pos=test_pos[0],
+        vels=test_vel[0],
         scale_factors=scale_factors,
         cosmology=planck_cosmology,
         n_mesh=n_mesh,
     )
-    print(target_pos[-1].max(axis=0))
-    print(pos_pm[-1].max(axis=0))
 
     k, pk_nbody = power_spectrum(
-        compensate_cic(cic_paint(jnp.zeros([n_mesh,n_mesh, n_mesh]), target_pos[-1])),
+        compensate_cic(cic_paint(jnp.zeros([n_mesh,n_mesh, n_mesh]), test_pos[-1])),
         boxsize=np.array([25.0] * 3),
         kmin=np.pi / 25.0,
         dk=2 * np.pi / 25.0,
@@ -144,7 +149,7 @@ if __name__ == "__main__":
     plt.savefig("pk_before.png")
     plt.close()
     edges = plt.hist(
-        target_vel[-1][:,0],
+        test_vel[-1][:,0],
         bins=100,
         alpha=0.5,
         label="N-body"
@@ -185,8 +190,8 @@ if __name__ == "__main__":
         params = optax.apply_updates(params, updates)
 
     pos_pm_corr, vel_pm_corr = run_pm_simulation_with_correction(
-        pos=target_pos[0],
-        vels=target_vel[0],
+        pos=test_pos[0],
+        vels=test_vel[0],
         scale_factors=scale_factors,
         cosmology=planck_cosmology,
         n_mesh=n_mesh,
@@ -211,7 +216,7 @@ if __name__ == "__main__":
 
 
     edges = plt.hist(
-        target_vel[-1][:,0],
+        test_vel[-1][:,0],
         bins=100,
         alpha=0.5,
         label="N-body"
@@ -224,5 +229,5 @@ if __name__ == "__main__":
     plt.legend()
     plt.xlabel('v')
     plt.ylabel('PDF')
-    plt.savefig('vel_hist_before.png')
+    plt.savefig('vel_hist_after.png')
     plt.close()    
