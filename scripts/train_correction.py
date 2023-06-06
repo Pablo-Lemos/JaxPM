@@ -1,6 +1,7 @@
 from functools import partial
 from tqdm import tqdm
 import logging
+
 logging.getLogger().setLevel(logging.INFO)
 
 import wandb
@@ -45,7 +46,7 @@ def loss_fn(
             atol=1e-5,
         )
         pos_pm %= n_mesh
-        dx = pos_pm - pos 
+        dx = pos_pm - pos
         dx = dx - n_mesh * jnp.round(dx / n_mesh)
         sim_mse = jnp.sum(dx**2, axis=-1)
         if velocity_loss:
@@ -73,14 +74,17 @@ def get_normalized_camels_pos_vel_z(
     cv_index_list,
     snapshot_list,
     downsampling_factor,
-): 
+):
     pos, vel, z = read_camels_cv_set(
-        cv_index_list=cv_index_list, 
+        cv_index_list=cv_index_list,
         snapshot_list=snapshot_list,
-        downsampling_factor=downsampling_factor
+        downsampling_factor=downsampling_factor,
     )
     pos, vel = normalize_by_mesh(
-        pos, vel, box_size[0], n_mesh,
+        pos,
+        vel,
+        box_size[0],
+        n_mesh,
     )
     return pos, vel, z
 
@@ -95,7 +99,7 @@ if __name__ == "__main__":
     learning_rate = 0.01
     n_steps = 100
     velocity_loss = False
-    log_experiment = False 
+    log_experiment = False
     if log_experiment:
         wandb.init(
             project="pm-nbody",
@@ -106,31 +110,35 @@ if __name__ == "__main__":
                 "learning_rate": learning_rate,
                 "n_steps": n_steps,
                 "velocity_loss": velocity_loss,
-            }
-        ) 
+            },
+        )
     snapshot_list = range(34)
-    train_idx = [0]#,1,2,3]
-    val_idx = [4,]
-    test_idx = [5,]
+    train_idx = [0]  # ,1,2,3]
+    val_idx = [
+        4,
+    ]
+    test_idx = [
+        5,
+    ]
     # ------ LOAD CAMELS DATA
     planck_cosmology = jc.Planck15(
         Omega_c=0.3 - 0.049, Omega_b=0.049, n_s=0.9624, h=0.671, sigma8=0.8
     )
     target_pos, target_vel, z = get_normalized_camels_pos_vel_z(
-        cv_index_list=train_idx, 
+        cv_index_list=train_idx,
         snapshot_list=snapshot_list,
-        downsampling_factor=downsampling_factor
+        downsampling_factor=downsampling_factor,
     )
     scale_factors = 1 / (1 + jnp.array(z))
     val_pos, val_vel, _ = get_normalized_camels_pos_vel_z(
-        cv_index_list=val_idx, 
+        cv_index_list=val_idx,
         snapshot_list=snapshot_list,
-        downsampling_factor=downsampling_factor
+        downsampling_factor=downsampling_factor,
     )
     test_pos, test_vel, _ = get_normalized_camels_pos_vel_z(
-        cv_index_list=test_idx, 
+        cv_index_list=test_idx,
         snapshot_list=snapshot_list,
-        downsampling_factor=downsampling_factor
+        downsampling_factor=downsampling_factor,
     )
     # ------ INITIALIZE SPLINE
     model, params = initialize_model(
@@ -181,6 +189,3 @@ if __name__ == "__main__":
         model=model,
         params=params,
     )
-
-
-

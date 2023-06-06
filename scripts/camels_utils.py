@@ -12,6 +12,7 @@ DEFAULT_CAMELS_DATA_DIR = Path(
     "../../projects/rrg-lplevass/data/CAMELS/Sims/IllustrisTNG_DM/"
 )
 
+
 def read_camels(
     snapshot,
     cv_index: int = 0,
@@ -55,7 +56,7 @@ def read_camels_snapshots(
     downsampling_factor=500,
     data_dir=DEFAULT_CAMELS_DATA_DIR,
 ):
-    logging.info(f'Reading CAMELS CV {cv_index}')
+    logging.info(f"Reading CAMELS CV {cv_index}")
     pos, vel, redshift = [], [], []
     for s in snapshot_list:
         p, v, z, _, _ = read_camels(
@@ -69,8 +70,9 @@ def read_camels_snapshots(
         redshift.append(z)
     return jnp.array(pos), jnp.array(vel), jnp.array(redshift)
 
+
 def read_camels_cv_set(
-    cv_index_list: List[int] = [0,1],
+    cv_index_list: List[int] = [0, 1],
     snapshot_list=range(34),
     downsampling_factor: int = 500,
     data_dir=DEFAULT_CAMELS_DATA_DIR,
@@ -86,6 +88,7 @@ def read_camels_cv_set(
         pos.append(p)
         vel.append(v)
     return jnp.array(pos), jnp.array(vel), redshift
+
 
 def normalize_by_mesh(positions, velocities, box_size, n_mesh):
     positions = positions / box_size * n_mesh
