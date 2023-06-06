@@ -3,7 +3,7 @@ from tqdm import tqdm
 import logging
 logging.getLogger().setLevel(logging.INFO)
 
-# import wandb
+import wandb
 import numpy as np
 
 import haiku as hk
@@ -117,8 +117,20 @@ if __name__ == "__main__":
     learning_rate = 0.01
     n_steps = 100
     velocity_loss = False
-    log_experiment = False
-    snapshot_list = range(32)
+    log_experiment = True 
+    if log_experiment:
+        wandb.init(
+            project="pm-nbody",
+            config={
+                "n_mesh": n_mesh,
+                "n_knots": n_knots,
+                "latent_size": latent_size,
+                "learning_rate": learning_rate,
+                "n_steps": n_steps,
+                "velocity_loss": velocity_loss,
+            }
+        ) 
+    snapshot_list = range(34)
     train_idx = [0,1,2,3]
     val_idx = [4,]
     test_idx = [5,]
@@ -235,7 +247,8 @@ if __name__ == "__main__":
             model,
         )
         pbar.set_postfix({"Step": step, "Loss": loss, "Val Loss": val_loss})
-        # wandb.log({'step': step, 'loss': loss})
+        if log_experiment:
+            wandb.log({'step': step, 'loss': loss, "val_loss": val_loss})
 
     pos_pm_corr, vel_pm_corr = run_pm_simulation_with_correction(
         pos=test_pos[plot_test_idx][0],
