@@ -73,6 +73,8 @@ def get_normalized_camels_pos_vel_z(
     cv_index_list,
     snapshot_list,
     downsampling_factor,
+    box_size,
+    n_mesh,
 ):
     pos, vel, z = read_camels_cv_set(
         cv_index_list=cv_index_list,
@@ -112,7 +114,7 @@ if __name__ == "__main__":
             },
         )
     snapshot_list = range(34)
-    train_idx = [0]  # ,1,2,3]
+    train_idx = [0,1,2,3]
     val_idx = [
         4,
     ]
@@ -127,25 +129,30 @@ if __name__ == "__main__":
         cv_index_list=train_idx,
         snapshot_list=snapshot_list,
         downsampling_factor=downsampling_factor,
+        box_size=box_size,
+        n_mesh=n_mesh,
     )
-    scale_factors = 1 / (1 + jnp.array(z))
     val_pos, val_vel, _ = get_normalized_camels_pos_vel_z(
         cv_index_list=val_idx,
         snapshot_list=snapshot_list,
         downsampling_factor=downsampling_factor,
+        box_size=box_size,
+        n_mesh=n_mesh,
     )
-    test_pos, test_vel, _ = get_normalized_camels_pos_vel_z(
+    test_pos, test_vel, z = get_normalized_camels_pos_vel_z(
         cv_index_list=test_idx,
         snapshot_list=snapshot_list,
         downsampling_factor=downsampling_factor,
+        box_size=box_size,
+        n_mesh=n_mesh,
     )
+    scale_factors = 1 / (1 + jnp.array(z))
     # ------ INITIALIZE SPLINE
     model, params = initialize_model(
         n_mesh=n_mesh,
         n_knots=n_knots,
         latent_size=latent_size,
     )
-    """
     # ------ TRAIN MODEL
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(params)
@@ -176,7 +183,6 @@ if __name__ == "__main__":
         pbar.set_postfix({"Step": step, "Loss": loss, "Val Loss": val_loss})
         if log_experiment:
             wandb.log({'step': step, 'loss': loss, "val_loss": val_loss})
-    """
     # ------ EVALUATE MODEL
     eval(
         test_pos=test_pos,

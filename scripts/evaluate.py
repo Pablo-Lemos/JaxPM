@@ -16,7 +16,6 @@ def get_power_spectrum(pos, n_mesh, box_size):
         dk=2 * np.pi / box_size,
     )
 
-
 def plot_power_spectra(
     test_pos,
     test_pos_pm,
@@ -35,7 +34,7 @@ def plot_power_spectra(
     )
     k = ks[0]
 
-    fig, ax = plt.subplots(2, 1, figsize=(15, 5), gridspec_kw={"height_ratios": [3, 1]})
+    fig, ax = plt.subplots(2, 1, figsize=(7, 4), gridspec_kw={"height_ratios": [3, 1]})
     for i, (pk_nbody, pk_pm, pk_pm_corr) in enumerate(
         zip(pks_nbody, pks_pm, pks_pm_corr)
     ):
@@ -46,7 +45,7 @@ def plot_power_spectra(
             label="JaxPM w/o correction" if i == 0 else None,
             color=c[0].get_color(),
             linestyle="dotted",
-            alpha=0.5,
+            alpha=0.75,
         )
         ax[0].loglog(
             k,
@@ -57,51 +56,26 @@ def plot_power_spectra(
         )
         ax[1].semilogx(
             k,
-            pk_pm_corr / pk_nbody,
+            pk_pm / pk_nbody,
+            linestyle='dotted',
             color=c[0].get_color(),
+            alpha=0.75,
         )
         ax[1].semilogx(
             k,
-            pk_pm / pk_nbody,
+            pk_pm_corr / pk_nbody,
+            linestyle='dashed',
             color=c[0].get_color(),
-            alpha=0.5,
         )
+    ax[1].axhline(y=1, color='gray', alpha=0.5)
+    ax[1].plot(k, np.mean(pks_pm[:,-1]/pks_nbody[:,-1]), linestyle='dashed',
+               color='black')
+    ax[1].plot(k, np.mean(pks_pm_corr[:,-1]/pks_nbody[:,-1]), linestyle='dotted',
+               color='black')
     ax[0].legend()
     ax[-1].set_xlabel(r"$k$ [$h \ \mathrm{Mpc}^{-1}$]")
     ax[0].set_ylabel(r"$P(k)$")
     return fig
-
-def run_sim(
-    pos,
-    vel,
-    scale_factors,
-    cosmology,
-    n_mesh,
-    model=None,
-    params=None,
-    correction=False,
-):
-    if correction:
-        sim_pos, sim_vel = run_pm_simulation_with_correction(
-            pos=pos[0],
-            vels=vel[0],
-            scale_factors=scale_factors,
-            cosmology=cosmology,
-            n_mesh=n_mesh,
-            model=model,
-            params=params,
-        )
-    else:
-        sim_pos, sim_vel = run_pm_simulation(
-            pos=pos[0],
-            vels=vel[0],
-            scale_factors=scale_factors,
-            cosmology=cosmology,
-            n_mesh=n_mesh,
-        )
-    #sim_pos *= box_size / n_mesh
-    #sim_vel *= box_size / n_mesh
-    return sim_pos, sim_vel
 
 
 def eval(
@@ -114,41 +88,33 @@ def eval(
     model,
     params,
 ):
-    test_pos_pm, test_vel_pm = jax.vmap(
-        run_sim,
-        in_axes=(
-            0,
-            0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ),
-    )(test_pos, test_vel, scale_factors, cosmology, n_mesh)
-    test_pos_pm_corr, test_vel_pm_corr = jax.vmap(
-        run_sim,
-        in_axes=(
-            0,
-            0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ),
-    )(
-        test_pos,
-        test_vel,
-        scale_factors,
-        cosmology,
-        n_mesh,
-        model=model,
-        params=params,
-        correction=True,
-    )
+    test_pos_pm, test_vel_pm = [], []
+    test_pos_pm_corr, test_vel_pm_corr = [], []
+    for i in range(len(test_pos)):
+        pos_pm, vel_pm = run_pm_simulation(
+            pos=test_pos[i][0],
+            vels=test_vel[i][0],
+            scale_factors=scale_factors,
+            cosmology=cosmology,
+            n_mesh=n_mesh,
+        )
+        test_pos_pm.append(pos_pm)
+        test_vel_pm.append(vel_pm)
+        pos_pm_corr, vel_pm_corr = run_pm_simulation_with_correction(
+            pos=test_pos[i][0],
+            vels=test_vel[i][0],
+            scale_factors=scale_factors,
+            cosmology=cosmology,
+            n_mesh=n_mesh,
+            model=model,
+            params=params,
+        )
+        test_pos_pm_corr.append(pos_pm_corr)
+        test_vel_pm_corr.append(vel_pm_corr)
+    test_pos_pm = jnp.array(test_pos_pm)
+    test_vel_pm = jnp.array(test_vel_pm)
+    test_pos_pm_corr = jnp.array(test_pos_pm_corr)
+    test_vel_pm_corr = jnp.array(test_vel_pm_corr)
     fig = plot_power_spectra(
         test_pos,
         test_pos_pm,
@@ -156,4 +122,4 @@ def eval(
         n_mesh,
         box_size=box_size,
     )
-    plt.savefig("pk.png")
+    plt.savefig("pk.png",dpi=300)
