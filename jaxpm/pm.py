@@ -17,7 +17,7 @@ def pm_forces(positions, mesh_shape=None, delta=None, r_split=0):
 
     if delta is None:
         delta_k = jnp.fft.rfftn(cic_paint(jnp.zeros(mesh_shape), positions))
-        delta_k = delta_k / jnp.prod(jnp.array(mesh_shape))
+        #delta_k = delta_k / jnp.prod(jnp.array(mesh_shape))
     else:
         delta_k = jnp.fft.rfftn(delta)
 
