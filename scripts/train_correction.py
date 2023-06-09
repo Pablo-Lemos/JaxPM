@@ -114,13 +114,9 @@ if __name__ == "__main__":
             },
         )
     snapshot_list = range(34)
-    train_idx = [0,1,2,3]
-    val_idx = [
-        4,
-    ]
-    test_idx = [
-        5,
-    ]
+    train_idx = range(21)
+    val_idx = range(21,23)
+    test_idx = range(23,25)
     # ------ LOAD CAMELS DATA
     planck_cosmology = jc.Planck15(
         Omega_c=0.3 - 0.049, Omega_b=0.049, n_s=0.9624, h=0.671, sigma8=0.8

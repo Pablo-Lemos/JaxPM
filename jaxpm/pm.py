@@ -97,7 +97,7 @@ def pgd_correction(pos, params):
     return dpos_pgd
 
     
-def make_neural_ode_fn(model, mesh_shape, density_correction=False,):
+def make_neural_ode_fn(model, mesh_shape,):
     def neural_nbody_ode(state, a, cosmo, params):
         """
         state is a tuple (position, velocities)
@@ -114,10 +114,7 @@ def make_neural_ode_fn(model, mesh_shape, density_correction=False,):
 
         # Apply a correction filter
         kk = jnp.sqrt(sum((ki/jnp.pi)**2 for ki in kvec))
-        if density_correction:
-            pot_k = pot_k *(1. + model.apply(params, kk, jnp.atleast_1d(a), delta_k))
-        else:
-            pot_k = pot_k *(1. + model.apply(params, kk, jnp.atleast_1d(a)))
+        pot_k = pot_k *(1. + model.apply(params, kk, jnp.atleast_1d(a)))
 
         # Computes gravitational forces
         forces = jnp.stack([cic_read(jnp.fft.irfftn(gradient_kernel(kvec, i)*pot_k), pos) 
@@ -133,3 +130,36 @@ def make_neural_ode_fn(model, mesh_shape, density_correction=False,):
 
         return dpos, dvel
     return neural_nbody_ode
+
+    
+def make_cnn_ode_fn(model, mesh_shape,):
+    def cnn_nbody_ode(state, a, cosmo, params):
+        """
+        state is a tuple (position, velocities)
+        """
+        pos, vel = state
+        kvec = fftk(mesh_shape)
+
+        delta = cic_paint(jnp.zeros(mesh_shape), pos)
+
+        delta_k = jnp.fft.rfftn(delta)
+
+        # Computes gravitational potential
+        pot_k = delta_k * laplace_kernel(kvec) * longrange_kernel(kvec, r_split=0)
+        
+
+
+        # Computes gravitational forces
+        forces = jnp.stack([cic_read(jnp.fft.irfftn(gradient_kernel(kvec, i)*pot_k), pos) 
+                          for i in range(3)],axis=-1)
+
+        forces = forces * 1.5 * cosmo.Omega_m
+
+        # Computes the update of position (drift)
+        dpos = 1. / (a**3 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * vel
+
+        # Computes the update of velocity (kick)
+        dvel = 1. / (a**2 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * forces
+
+        return dpos, dvel
+    return cnn_nbody_ode

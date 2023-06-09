@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
+
 import haiku as hk
+from jaxpm.painting import cic_read 
 
 def _deBoorVectorized(x, t, c, p):
     """
@@ -58,3 +60,49 @@ class NeuralSplineFourierFilter(hk.Module):
     ak = jnp.concatenate([jnp.zeros((3,)), k, jnp.ones((3,))])
 
     return _deBoorVectorized(jnp.clip(x/jnp.sqrt(3), 0, 1-1e-4), ak, w, 3)
+
+import haiku as hk
+class CNN(hk.Module):
+  def __init__(self, n_features: int,):
+      super().__init__(name="CNN")
+      self.conv1 = hk.Conv3D(
+          output_channels=n_features, 
+          kernel_shape=(3,3,3),  
+          padding="SAME",
+        )
+      self.conv2 = hk.Conv3D(output_channels=n_features, kernel_shape=(3,3,3),  padding="SAME")
+      self.conv3 = hk.Conv3D(output_channels=n_features, kernel_shape=(3,3,3),  padding="SAME")
+      # Dense layers
+      self.flatten = hk.Flatten()
+      self.linear1 = hk.Linear(n_features)
+      self.linear2 = hk.Linear(n_features)
+      self.linear3 = hk.Linear(1)
+
+  def __call__(self, x, positions, global_features):
+    x = self.conv1(x)
+    x = jax.nn.tanh(x)
+    x = self.conv2(x)
+    x = jax.nn.tanh(x)
+    x = self.conv3(x)
+    features = self.linear1(x)
+    vmap_features_cic = jax.vmap(
+      cic_read,
+      in_axes = (-1,None),
+    )
+    vmap_batch_cic = jax.vmap(
+      vmap_features_cic,
+      in_axes=(0,0)
+    )
+    features_at_pos = vmap_batch_cic(features, positions).swapaxes(-2,-1)
+    broadcast_globals = jnp.broadcast_to(
+      global_features[:,:,None], (features_at_pos.shape[0], features_at_pos.shape[1], 1),
+    )
+    features_at_pos = jnp.concatenate([features_at_pos, broadcast_globals], axis=-1)
+    features_at_pos = self.linear2(features_at_pos)
+    features_at_pos = jax.nn.tanh(features_at_pos)
+    features_at_pos = self.linear3(features_at_pos)
+    return features_at_pos
+
+def ConvNet(x, positions, global_features):
+    cnn = CNN(n_features=8)
+    return cnn(x, positions, global_features)
