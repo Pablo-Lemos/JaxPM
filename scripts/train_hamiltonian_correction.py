@@ -146,7 +146,7 @@ class CNN(hk.Module):
         self.linear3 = hk.Linear(1)
 
     def __call__(self, x, positions, global_features):
-        # jax.debug.print('scale = {y}, mean x = {x}, std x = {z}', y=global_features,x=jnp.mean(x), z=jnp.std(x))
+        #jax.debug.print('scale = {y}, mean x = {x}, std x = {z}', y=global_features,x=jnp.mean(x), z=jnp.std(x))
         x = self.conv1(x)
         x = jax.nn.tanh(x)
         x = self.conv2(x)
@@ -154,24 +154,24 @@ class CNN(hk.Module):
         x = self.conv3(x)
         x = jax.nn.tanh(x)
         features = self.linear1(x)
-        # jax.debug.print('scale = {y}, mean features = {x}, std features = {z}', y=global_features,x=jnp.mean(features), z=jnp.std(features))
+        #jax.debug.print('scale = {y}, mean features = {x}, std features = {z}', y=global_features,x=jnp.mean(features), z=jnp.std(features))
         vmap_features_cic = jax.vmap(
             cic_read,
             in_axes=(-1, None),
         )
         features_at_pos = vmap_features_cic(features, positions).swapaxes(-2, -1)
-        # jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
+        #jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
         global_features = jnp.atleast_1d(global_features)
         broadcast_globals = jnp.broadcast_to(
             global_features[:, None],
             (len(positions), len(global_features)),
         )
         features_at_pos = jnp.concatenate([features_at_pos, broadcast_globals], axis=-1)
-        # jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
+        #jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
         features_at_pos = self.linear2(features_at_pos)
         features_at_pos = jax.nn.tanh(features_at_pos)
         features_at_pos = self.linear3(features_at_pos)
-        # jax.debug.print('scale = {y}, mean features at pos after = {x}, std features at pos after = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
+        #jax.debug.print('scale = {y}, mean features at pos after = {x}, std features at pos after = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
         return features_at_pos
 
 
@@ -182,18 +182,20 @@ def ConvNet(x, positions, global_features):
 
 def get_hamiltonian(mesh_shape, model=None):
     def hamiltonian_from_state_fn(position, momentum, scale_factor, params):
+        #jax.debug.print('*********************')
         kvec = fftk(mesh_shape)
         delta = cic_paint(jnp.zeros(mesh_shape), position)
         delta_k = jnp.fft.rfftn(delta)
         pot_k = -delta_k * laplace_kernel(kvec) * longrange_kernel(kvec, r_split=0)
-        grav_potential = 0.5 * (1 + cic_read(jnp.fft.irfftn(pot_k), position))
+        pot = jnp.fft.irfftn(pot_k)
+        grav_potential = 0.5 * (1 + cic_read(pot, position))
         if model is not None:
             corr_potential = model.apply(
-                params, delta[..., None], position, scale_factor
+                params, 0.5 * (1 + pot[..., None]), position, scale_factor
             )
-            # jax.debug.print('pot ratio = {x}', x=corr_potential/grav_potential)
-            # jax.debug.print('scale = {y}, mean pot = {x}, mean corr = {z}', y=scale_factor,x=jnp.mean(grav_potential), z=jnp.mean(corr_potential))
-            # jax.debug.print('scale = {y}, std pot = {x}, std corr = {z}', y=scale_factor,x=jnp.std(grav_potential), z=jnp.std(corr_potential))
+            #jax.debug.print('pot ratio = {x}', x=corr_potential/grav_potential)
+            #jax.debug.print('scale = {y}, mean pot = {x}, mean corr = {z}', y=scale_factor,x=jnp.mean(grav_potential), z=jnp.mean(corr_potential))
+            #jax.debug.print('scale = {y}, std pot = {x}, std corr = {z}', y=scale_factor,x=jnp.std(grav_potential), z=jnp.std(corr_potential))
             grav_potential += corr_potential[..., 0]
         # Computes momentum
         momentum_norm = jnp.linalg.norm(momentum, axis=1)
