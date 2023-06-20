@@ -16,7 +16,8 @@ DEFAULT_CAMELS_DATA_DIR = Path(
 def read_camels(
     snapshot,
     cv_index: int = 0,
-    downsampling_factor: int = 100,
+    downsample: bool = True,
+    n_mesh: int = 512,
     data_dir=DEFAULT_CAMELS_DATA_DIR,
 ):
     snapshot_filename = str(
@@ -40,8 +41,8 @@ def read_camels(
     ]  # peculiar velocities in km/s
     pos = jnp.array(pos)
     vel = jnp.array(vel / 100 * (1.0 / (1 + redshift)))
-    if downsampling_factor is not None:
-        downsampling_factor = len(pos) // 32**3
+    if downsample:
+        downsampling_factor = len(pos) // n_mesh**3
         key = jax.random.PRNGKey(0)
         permuted_indices = jax.random.permutation(key, len(pos))
         selected_indices = permuted_indices[: len(pos) // downsampling_factor]

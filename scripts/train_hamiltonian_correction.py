@@ -2,10 +2,8 @@ import tables
 from functools import partial
 from jaxpm.kernels import (
     fftk,
-    gradient_kernel,
     laplace_kernel,
     longrange_kernel,
-    PGD_kernel,
 )
 import h5py
 from typing import List
@@ -13,13 +11,13 @@ import numpy as np
 from pathlib import Path
 import jax
 import jax.numpy as jnp
-import logging
 from jaxpm.painting import cic_paint, cic_read
 import matplotlib.pyplot as plt
 import readgadget
 from jax.experimental.ode import odeint
 from jaxpm.utils import power_spectrum
 from jaxpm.painting import cic_paint, cic_read, compensate_cic
+from jaxpm.nn import CNN
 import jax_cosmo as jc
 import haiku as hk
 from matplotlib.colors import LogNorm
@@ -116,64 +114,8 @@ pos, vel, z = read_camels_cv_set(
     ],
     snapshot_list=range(34),
 )
-
-
-class CNN(hk.Module):
-    def __init__(
-        self,
-        n_features: int,
-    ):
-        super().__init__(name="CNN")
-        self.conv1 = hk.Conv3D(
-            output_channels=n_features,
-            kernel_shape=(3, 3, 3),
-            padding="SAME",
-        )
-        self.conv2 = hk.Conv3D(
-            output_channels=n_features,
-            kernel_shape=(3, 3, 3),
-            padding="SAME",
-        )
-        self.conv3 = hk.Conv3D(
-            output_channels=n_features,
-            kernel_shape=(3, 3, 3),
-            padding="SAME",
-        )
-        # Dense layers
-        self.flatten = hk.Flatten()
-        self.linear1 = hk.Linear(n_features)
-        self.linear2 = hk.Linear(n_features)
-        self.linear3 = hk.Linear(1)
-
-    def __call__(self, x, positions, global_features):
-        #jax.debug.print('scale = {y}, mean x = {x}, std x = {z}', y=global_features,x=jnp.mean(x), z=jnp.std(x))
-        x = self.conv1(x)
-        x = jax.nn.tanh(x)
-        x = self.conv2(x)
-        x = jax.nn.tanh(x)
-        x = self.conv3(x)
-        x = jax.nn.tanh(x)
-        features = self.linear1(x)
-        #jax.debug.print('scale = {y}, mean features = {x}, std features = {z}', y=global_features,x=jnp.mean(features), z=jnp.std(features))
-        vmap_features_cic = jax.vmap(
-            cic_read,
-            in_axes=(-1, None),
-        )
-        features_at_pos = vmap_features_cic(features, positions).swapaxes(-2, -1)
-        #jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
-        global_features = jnp.atleast_1d(global_features)
-        broadcast_globals = jnp.broadcast_to(
-            global_features[:, None],
-            (len(positions), len(global_features)),
-        )
-        features_at_pos = jnp.concatenate([features_at_pos, broadcast_globals], axis=-1)
-        #jax.debug.print('scale = {y}, mean features at pos = {x}, std features at pos = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
-        features_at_pos = self.linear2(features_at_pos)
-        features_at_pos = jax.nn.tanh(features_at_pos)
-        features_at_pos = self.linear3(features_at_pos)
-        #jax.debug.print('scale = {y}, mean features at pos after = {x}, std features at pos after = {z}', y=global_features,x=jnp.mean(features_at_pos), z=jnp.std(features_at_pos))
-        return features_at_pos
-
+print('after reading camels')
+print('pos = ', pos.shape)
 
 def ConvNet(x, positions, global_features):
     cnn = CNN(n_features=32)
@@ -190,13 +132,14 @@ def get_hamiltonian(mesh_shape, model=None):
         pot = jnp.fft.irfftn(pot_k)
         grav_potential = 0.5 * (1 + cic_read(pot, position))
         if model is not None:
+            grid_input = jnp.stack([delta, 0.5*(1. + pot)], axis=-1)
             corr_potential = model.apply(
-                params, 0.5 * (1 + pot[..., None]), position, scale_factor
+                params, grid_input, position, scale_factor
             )
             #jax.debug.print('pot ratio = {x}', x=corr_potential/grav_potential)
             #jax.debug.print('scale = {y}, mean pot = {x}, mean corr = {z}', y=scale_factor,x=jnp.mean(grav_potential), z=jnp.mean(corr_potential))
             #jax.debug.print('scale = {y}, std pot = {x}, std corr = {z}', y=scale_factor,x=jnp.std(grav_potential), z=jnp.std(corr_potential))
-            grav_potential += corr_potential[..., 0]
+            grav_potential += corr_potential.squeeze()
         # Computes momentum
         momentum_norm = jnp.linalg.norm(momentum, axis=1)
         kinetic_energy = 0.5 * momentum_norm**2
@@ -289,13 +232,6 @@ params = conv_net.init(
     pos_normed[-1],
     jnp.array([1.0]),  # Globals = scale factor
 )
-preds = conv_net.apply(
-    params,
-    delta[..., None],  # Add channel dimension
-    pos_normed[-1],
-    jnp.array([1.0]),
-)
-
 h_fn = get_hamiltonian(mesh_shape=mesh_shape, model=conv_net)
 hamiltonian_gradients_fn = jax.grad(h_fn, argnums=[0, 1])
 

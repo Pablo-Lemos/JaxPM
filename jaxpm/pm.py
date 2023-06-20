@@ -163,3 +163,33 @@ def make_cnn_ode_fn(model, mesh_shape,):
 
         return dpos, dvel
     return cnn_nbody_ode
+
+def get_hamiltonian(position, momentum, mesh_shape):
+    kvec = fftk(mesh_shape)
+    delta = cic_paint(jnp.zeros(mesh_shape), position)
+    delta_k = jnp.fft.rfftn(delta)
+    pot_k = -delta_k * laplace_kernel(kvec) * longrange_kernel(kvec, r_split=0)
+    pot = jnp.fft.irfftn(pot_k)
+    grav_potential = 0.5 * (1 + cic_read(pot, position))
+    momentum_norm = jnp.linalg.norm(momentum, axis=1)
+    kinetic_energy = 0.5 * momentum_norm**2
+    hamiltonian = grav_potential + kinetic_energy
+    return hamiltonian.sum()
+
+def make_hamiltonian_ode_fn(mesh_shape,):
+    hamiltonian_gradients_fn = jax.grad(get_hamiltonian, argnums=(0, 1))
+    def hamiltonian_nbody_ode(state, a, cosmo):
+        pos, vel = state
+        dh_dposition, dh_dmomentum = hamiltonian_gradients_fn(pos, vel, mesh_shape,)
+        dpos_da = 1.0 / (a**3 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * dh_dmomentum
+        dvel_da = (
+            -1.5
+            * cosmo.Omega_m
+            / (a**2 * jnp.sqrt(jc.background.Esqr(cosmo, a)))
+            * dh_dposition
+        )
+        return dpos_da, dvel_da
+    return hamiltonian_nbody_ode
+
+ 
+
