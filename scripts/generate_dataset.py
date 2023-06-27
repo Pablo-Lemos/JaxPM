@@ -76,7 +76,8 @@ def get_pk(pos, boxsize, n_mesh):
     return jnp.vstack([k, pk])
 
 if __name__ == '__main__':
-    HR = True 
+    HR = False 
+    downsample_lr = False
     use_hamiltonian = False 
     out_dir = Path("/home/cuestalz/scratch/pm_data/")
     omega_c = 0.25
@@ -89,19 +90,22 @@ if __name__ == '__main__':
         ics = generate_lpt_ics(omega_c, sigma8)
     else: 
         n_mesh = 64
+        mesh_shape = [n_mesh, n_mesh, n_mesh]
         if use_hamiltonian:
             pos = jnp.load(out_dir / f'pos_hamiltonian_256.npy')[0]
             vel = jnp.load(out_dir / f'vel_hamiltonian_256.npy')[0]
         else:
             pos = jnp.load(out_dir / f'pos_256.npy')[0]
             vel = jnp.load(out_dir / f'vel_256.npy')[0]
-        # downsamle particles
-        downsampling_factor = len(pos) // n_mesh **3
-        key = jax.random.PRNGKey(0)
-        permuted_indices = jax.random.permutation(key, len(pos))
-        selected_indices = permuted_indices[: len(pos) // downsampling_factor]
-        pos = jnp.take(pos, selected_indices, axis=0)
-        vel = jnp.take(vel, selected_indices, axis=0)
+        pos *= n_mesh / 256
+        vel *= n_mesh / 256
+        if downsample_lr:
+            downsampling_factor = len(pos) // n_mesh **3
+            key = jax.random.PRNGKey(0)
+            permuted_indices = jax.random.permutation(key, len(pos))
+            selected_indices = permuted_indices[: len(pos) // downsampling_factor]
+            pos = jnp.take(pos, selected_indices, axis=0)
+            vel = jnp.take(vel, selected_indices, axis=0)
         ics = [pos, vel]
 
     t0 = time.time()
@@ -111,8 +115,6 @@ if __name__ == '__main__':
         initial_conditions=ics,
     )
     print(f"It took {time.time() - t0} seconds to get on sim")
-
-
     pk = get_pk(pos[-1], box_size[0], n_mesh)
     if use_hamiltonian:
         jnp.save(out_dir / f"pos_hamiltonian_{n_mesh}.npy", pos)
