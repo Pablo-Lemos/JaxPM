@@ -76,13 +76,16 @@ def get_pk(pos, boxsize, n_mesh):
     return jnp.vstack([k, pk])
 
 if __name__ == '__main__':
-    HR = False
-    use_hamiltonian = True
+    HR = True 
+    use_hamiltonian = False 
     out_dir = Path("/home/cuestalz/scratch/pm_data/")
     omega_c = 0.25
     sigma8 = 0.8
+    box_size = [256.0, 256.0, 256.0]
+    snapshots = jnp.linspace(0.01, 1.0, 25)
     if HR:
         n_mesh = 256
+        mesh_shape = [n_mesh, n_mesh, n_mesh]
         ics = generate_lpt_ics(omega_c, sigma8)
     else: 
         n_mesh = 64
@@ -100,9 +103,6 @@ if __name__ == '__main__':
         pos = jnp.take(pos, selected_indices, axis=0)
         vel = jnp.take(vel, selected_indices, axis=0)
         ics = [pos, vel]
-    mesh_shape = [n_mesh, n_mesh, n_mesh]
-    box_size = [256.0, 256.0, 256.0]
-    snapshots = jnp.linspace(0.01, 1.0, 25)
 
     t0 = time.time()
     pos, vel = run_simulation(
